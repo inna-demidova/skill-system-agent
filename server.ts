@@ -60,6 +60,7 @@ app.post("/api/chat", async (req, res) => {
       ...agentOptions,
       sessionId,
       ...(clientSessionId ? { resume: clientSessionId } : {}),
+      stderr: (data: string) => console.error("[claude-cli stderr]", data),
     };
 
     console.log("[chat] Starting query:", { message: message.trim().slice(0, 50), sessionId });
