@@ -6,8 +6,7 @@
   "scripts": {
     "cli": "tsx agent.ts",
     "serve": "tsx server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "tsx server.ts"
   },
   "keywords": [],
   "author": "",
@@ -19,10 +18,10 @@
     "@types/node": "^25.2.3",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "tsx": "^4.21.0",
     "@anthropic-ai/claude-agent-sdk": "^0.2.39",
     "@supabase/supabase-js": "^2.95.3",
     "cors": "^2.8.6",
