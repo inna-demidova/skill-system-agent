@@ -10,5 +10,5 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "agent.ts", ".claude/skills/**/*"]
+  "include": ["src/**/*", "agent.ts", "server.ts", ".claude/skills/**/*"]
 }
