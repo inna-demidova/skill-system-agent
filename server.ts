@@ -51,22 +51,15 @@ app.post("/api/chat", async (req, res) => {
   res.flushHeaders();
 
   const sessionId = clientSessionId || randomUUID();
-  const abortController = new AbortController();
 
   // Send sessionId as the first event so client can store it
   res.write(`event: session\ndata: ${JSON.stringify({ sessionId })}\n\n`);
-
-  // Abort the query if the client disconnects
-  req.on("close", () => {
-    abortController.abort();
-  });
 
   try {
     const queryOptions = {
       ...agentOptions,
       sessionId,
       ...(clientSessionId ? { resume: clientSessionId } : {}),
-      abortController,
     };
 
     console.log("[chat] Starting query:", { message: message.trim().slice(0, 50), sessionId });
@@ -75,8 +68,6 @@ app.post("/api/chat", async (req, res) => {
     for await (const msg of query({ prompt: message.trim(), options: queryOptions })) {
       messageCount++;
       console.log("[chat] Message received:", { type: msg.type, subtype: "subtype" in msg ? msg.subtype : undefined });
-
-      if (abortController.signal.aborted) break;
 
       switch (msg.type) {
         case "stream_event": {
@@ -104,10 +95,8 @@ app.post("/api/chat", async (req, res) => {
     console.log("[chat] Query finished. Total messages:", messageCount);
   } catch (err) {
     console.error("[chat] Exception:", err);
-    if (!abortController.signal.aborted) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
-    }
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
   }
 
   res.write("event: done\ndata: {}\n\n");
