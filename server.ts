@@ -36,6 +36,25 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/api/debug", (_req, res) => {
+  const { execSync } = require("child_process");
+  const info: Record<string, unknown> = {
+    cwd: process.cwd(),
+    platform: process.platform,
+    arch: process.arch,
+    nodeVersion: process.version,
+    hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
+    hasSupabaseUrl: !!process.env.SUPABASE_URL,
+    envKeys: Object.keys(process.env).filter(k => !k.includes("KEY") && !k.includes("SECRET")),
+  };
+  try {
+    info.sdkBinaryPath = execSync("ls -la node_modules/@anthropic-ai/claude-agent-sdk/vendor/ 2>&1 || echo 'no vendor dir'").toString();
+  } catch (e) {
+    info.sdkBinaryError = String(e);
+  }
+  res.json(info);
+});
+
 app.post("/api/chat", async (req, res) => {
   const { message, sessionId: clientSessionId } = req.body;
 
@@ -61,6 +80,7 @@ app.post("/api/chat", async (req, res) => {
       sessionId,
       ...(clientSessionId ? { resume: clientSessionId } : {}),
       stderr: (data: string) => console.error("[claude-cli stderr]", data),
+      debug: true,
     };
 
     console.log("[chat] Starting query:", { message: message.trim().slice(0, 50), sessionId });
