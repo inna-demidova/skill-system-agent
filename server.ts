@@ -4,6 +4,13 @@ import cors from "cors";
 import { randomUUID } from "crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled rejection:", err);
+});
+
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
