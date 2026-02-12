@@ -69,7 +69,13 @@ app.post("/api/chat", async (req, res) => {
       abortController,
     };
 
+    console.log("[chat] Starting query:", { message: message.trim().slice(0, 50), sessionId });
+
+    let messageCount = 0;
     for await (const msg of query({ prompt: message.trim(), options: queryOptions })) {
+      messageCount++;
+      console.log("[chat] Message received:", { type: msg.type, subtype: "subtype" in msg ? msg.subtype : undefined });
+
       if (abortController.signal.aborted) break;
 
       switch (msg.type) {
@@ -86,6 +92,7 @@ app.post("/api/chat", async (req, res) => {
           if (msg.subtype === "success") {
             res.write(`event: result\ndata: ${JSON.stringify({ text: msg.result, sessionId: msg.session_id })}\n\n`);
           } else {
+            console.error("[chat] Result error:", msg);
             const errors = "errors" in msg ? msg.errors : [];
             res.write(`event: error\ndata: ${JSON.stringify({ error: msg.subtype, details: errors })}\n\n`);
           }
@@ -93,7 +100,10 @@ app.post("/api/chat", async (req, res) => {
         }
       }
     }
+
+    console.log("[chat] Query finished. Total messages:", messageCount);
   } catch (err) {
+    console.error("[chat] Exception:", err);
     if (!abortController.signal.aborted) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
