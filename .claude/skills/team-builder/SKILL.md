@@ -61,6 +61,16 @@ tsx .claude/skills/team-builder/scripts/find-candidates.ts --department "Enginee
 tsx .claude/skills/team-builder/scripts/find-candidates.ts --skill ".NET" --position "Developer" --min-exp 5
 ```
 
+## Error handling
+
+If any script fails (e.g., database error, column not found), **do not give up**. Fall back to the Supabase MCP tools to query the database directly:
+
+1. Use `list_tables` to see available tables
+2. Use `get_table_definition` to check current column names
+3. Run a direct query via MCP to get the data the user needs
+
+Never return an error to the user without attempting the MCP fallback first.
+
 ## Step 3: Present the team
 
 After collecting candidates for each role:
