@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { randomUUID } from "crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { parseCV } from "./.claude/skills/parse-cv/scripts/parse-cv";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception:", err);
@@ -122,6 +123,37 @@ app.post("/api/chat", async (req, res) => {
 
   res.write("event: done\ndata: {}\n\n");
   res.end();
+});
+
+// Direct action endpoint — no Agent SDK, just function calls
+app.post("/api/action", async (req, res) => {
+  const { action, payload } = req.body;
+
+  if (!action || typeof action !== "string") {
+    res.status(400).json({ error: "action is required" });
+    return;
+  }
+
+  try {
+    switch (action) {
+      case "parse-cv": {
+        const cvText = payload?.cvText;
+        if (!cvText || typeof cvText !== "string") {
+          res.status(400).json({ error: "payload.cvText is required" });
+          return;
+        }
+        const result = await parseCV(cvText);
+        res.json({ success: true, data: result });
+        break;
+      }
+      default:
+        res.status(400).json({ error: `Unknown action: ${action}` });
+    }
+  } catch (err) {
+    console.error(`[action:${action}] Error:`, err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: message });
+  }
 });
 
 app.listen(PORT, "0.0.0.0", () => {
