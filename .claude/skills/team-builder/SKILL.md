@@ -98,3 +98,4 @@ User: "Build a team: 1 React developer (5+ years), 2 QA engineers"
 2. Run: `tsx .claude/skills/team-builder/scripts/find-candidates.ts --skill "React.js" --min-exp 5`
 3. Run: `tsx .claude/skills/team-builder/scripts/find-candidates.ts --position "QA"`
 4. Combine results, avoid duplicates, present the team
+test text
