@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { createOrUpdateFile, deleteFile, deleteDirectory } from "./github";
 
 const router = Router();
 const SKILLS_DIR = path.join(process.cwd(), ".claude", "skills");
@@ -174,6 +175,10 @@ router.put("/api/skills/:name/file", async (req, res) => {
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, content, "utf-8");
     res.json({ ok: true, path: filePath });
+
+    // Sync to GitHub (fire-and-forget)
+    createOrUpdateFile(`.claude/skills/${name}/${filePath}`, content, `Update ${name}/${filePath}`)
+      .catch((err) => console.error("[github] sync error:", err.message));
   } catch (err) {
     res.status(500).json({ error: "Failed to write file" });
   }
@@ -198,6 +203,9 @@ router.delete("/api/skills/:name/file", async (req, res) => {
   try {
     await fs.unlink(resolved);
     res.json({ ok: true });
+
+    deleteFile(`.claude/skills/${name}/${filePath}`, `Delete ${name}/${filePath}`)
+      .catch((err) => console.error("[github] sync error:", err.message));
   } catch {
     res.status(404).json({ error: "File not found" });
   }
@@ -228,6 +236,9 @@ router.post("/api/skills", async (req, res) => {
     await fs.mkdir(skillDir, { recursive: true });
     await fs.writeFile(path.join(skillDir, "SKILL.md"), skillMd, "utf-8");
     res.status(201).json({ ok: true, name });
+
+    createOrUpdateFile(`.claude/skills/${name}/SKILL.md`, skillMd, `Create skill ${name}`)
+      .catch((err) => console.error("[github] sync error:", err.message));
   } catch (err) {
     res.status(500).json({ error: "Failed to create skill" });
   }
@@ -248,6 +259,9 @@ router.delete("/api/skills/:name", async (req, res) => {
     await fs.access(skillDir);
     await fs.rm(skillDir, { recursive: true });
     res.json({ ok: true });
+
+    deleteDirectory(`.claude/skills/${name}`, `Delete skill ${name}`)
+      .catch((err) => console.error("[github] sync error:", err.message));
   } catch {
     res.status(404).json({ error: "Skill not found" });
   }
