@@ -172,15 +172,13 @@ router.put("/api/skills/:name/file", async (req, res) => {
   }
 
   try {
+    await createOrUpdateFile(`.claude/skills/${name}/${filePath}`, content, `Update ${name}/${filePath}`);
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, content, "utf-8");
     res.json({ ok: true, path: filePath });
-
-    // Sync to GitHub (fire-and-forget)
-    createOrUpdateFile(`.claude/skills/${name}/${filePath}`, content, `Update ${name}/${filePath}`)
-      .catch((err) => console.error("[github] sync error:", err.message));
   } catch (err) {
-    res.status(500).json({ error: "Failed to write file" });
+    const message = err instanceof Error ? err.message : "Failed to write file";
+    res.status(500).json({ error: message });
   }
 });
 
@@ -201,13 +199,12 @@ router.delete("/api/skills/:name/file", async (req, res) => {
   }
 
   try {
+    await deleteFile(`.claude/skills/${name}/${filePath}`, `Delete ${name}/${filePath}`);
     await fs.unlink(resolved);
     res.json({ ok: true });
-
-    deleteFile(`.claude/skills/${name}/${filePath}`, `Delete ${name}/${filePath}`)
-      .catch((err) => console.error("[github] sync error:", err.message));
-  } catch {
-    res.status(404).json({ error: "File not found" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "File not found";
+    res.status(500).json({ error: message });
   }
 });
 
@@ -233,14 +230,13 @@ router.post("/api/skills", async (req, res) => {
   const skillMd = `---\nname: ${name}\ndescription: ${description || ""}\nuser-invocable: true\n---\n\n# ${name}\n\nDescribe your skill instructions here.\n`;
 
   try {
+    await createOrUpdateFile(`.claude/skills/${name}/SKILL.md`, skillMd, `Create skill ${name}`);
     await fs.mkdir(skillDir, { recursive: true });
     await fs.writeFile(path.join(skillDir, "SKILL.md"), skillMd, "utf-8");
     res.status(201).json({ ok: true, name });
-
-    createOrUpdateFile(`.claude/skills/${name}/SKILL.md`, skillMd, `Create skill ${name}`)
-      .catch((err) => console.error("[github] sync error:", err.message));
   } catch (err) {
-    res.status(500).json({ error: "Failed to create skill" });
+    const message = err instanceof Error ? err.message : "Failed to create skill";
+    res.status(500).json({ error: message });
   }
 });
 
@@ -257,13 +253,12 @@ router.delete("/api/skills/:name", async (req, res) => {
 
   try {
     await fs.access(skillDir);
+    await deleteDirectory(`.claude/skills/${name}`, `Delete skill ${name}`);
     await fs.rm(skillDir, { recursive: true });
     res.json({ ok: true });
-
-    deleteDirectory(`.claude/skills/${name}`, `Delete skill ${name}`)
-      .catch((err) => console.error("[github] sync error:", err.message));
-  } catch {
-    res.status(404).json({ error: "Skill not found" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Skill not found";
+    res.status(500).json({ error: message });
   }
 });
 
