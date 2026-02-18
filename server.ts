@@ -4,6 +4,7 @@ import cors from "cors";
 import { randomUUID } from "crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { parseCV } from "./.claude/skills/parse-cv/scripts/parse-cv";
+import { skillsRouter } from "./src/skills-api";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception:", err);
@@ -32,6 +33,8 @@ const agentOptions = {
   allowDangerouslySkipPermissions: true,
   includePartialMessages: true,
 };
+
+app.use(skillsRouter);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
