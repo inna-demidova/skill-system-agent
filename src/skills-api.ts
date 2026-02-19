@@ -5,6 +5,7 @@ import { createOrUpdateFile, deleteFile, deleteDirectory } from "./github";
 
 const router = Router();
 const SKILLS_DIR = path.join(process.cwd(), ".claude", "skills");
+const DRAFTS_DIR = path.join(process.cwd(), ".claude", "skill-drafts");
 
 // --- Helpers ---
 
@@ -12,8 +13,8 @@ function isValidName(name: string): boolean {
   return /^[a-z0-9-]+$/.test(name);
 }
 
-function safePath(skillName: string, filePath?: string): string | null {
-  const base = path.join(SKILLS_DIR, skillName);
+function safePath(skillName: string, filePath?: string, baseDir: string = SKILLS_DIR): string | null {
+  const base = path.join(baseDir, skillName);
   if (!filePath) return base;
 
   // Block path traversal
@@ -23,6 +24,23 @@ function safePath(skillName: string, filePath?: string): string | null {
   if (!resolved.startsWith(base + path.sep) && resolved !== base) return null;
 
   return resolved;
+}
+
+/** Recursively collect all file paths relative to a directory */
+async function collectFiles(dirPath: string, relativeTo: string): Promise<string[]> {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await collectFiles(fullPath, relativeTo));
+    } else {
+      files.push(path.relative(relativeTo, fullPath));
+    }
+  }
+
+  return files;
 }
 
 function parseFrontmatter(content: string): Record<string, string> {
@@ -283,6 +301,157 @@ router.post("/api/skills/:name/directory", async (req, res) => {
     res.status(201).json({ ok: true, path: dirPath });
   } catch {
     res.status(500).json({ error: "Failed to create directory" });
+  }
+});
+
+// --- Skill Drafts ---
+
+// GET /api/skill-drafts — list all drafts
+router.get("/api/skill-drafts", async (_req, res) => {
+  try {
+    await fs.mkdir(DRAFTS_DIR, { recursive: true });
+    const entries = await fs.readdir(DRAFTS_DIR, { withFileTypes: true });
+    const drafts = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const skillMdPath = path.join(DRAFTS_DIR, entry.name, "SKILL.md");
+      let metadata: Record<string, string> = {};
+
+      try {
+        const content = await fs.readFile(skillMdPath, "utf-8");
+        metadata = parseFrontmatter(content);
+      } catch {
+        // SKILL.md may not exist yet
+      }
+
+      drafts.push({
+        name: entry.name,
+        displayName: metadata.name || entry.name,
+        description: metadata.description || "",
+        userInvocable: metadata["user-invocable"] !== "false",
+      });
+    }
+
+    res.json(drafts);
+  } catch {
+    res.status(500).json({ error: "Failed to list drafts" });
+  }
+});
+
+// GET /api/skill-drafts/:name/tree — draft file tree
+router.get("/api/skill-drafts/:name/tree", async (req, res) => {
+  const { name } = req.params;
+  if (!isValidName(name)) {
+    res.status(400).json({ error: "Invalid skill name" });
+    return;
+  }
+
+  const draftDir = safePath(name, undefined, DRAFTS_DIR);
+  if (!draftDir) {
+    res.status(400).json({ error: "Invalid path" });
+    return;
+  }
+
+  try {
+    await fs.access(draftDir);
+    const files = await buildTree(draftDir, draftDir);
+    res.json({ name, files });
+  } catch {
+    res.status(404).json({ error: "Draft not found" });
+  }
+});
+
+// GET /api/skill-drafts/:name/file?path=SKILL.md — read draft file
+router.get("/api/skill-drafts/:name/file", async (req, res) => {
+  const { name } = req.params;
+  const filePath = req.query.path as string;
+
+  if (!isValidName(name) || !filePath) {
+    res.status(400).json({ error: "Invalid skill name or missing path" });
+    return;
+  }
+
+  const resolved = safePath(name, filePath, DRAFTS_DIR);
+  if (!resolved) {
+    res.status(400).json({ error: "Invalid path" });
+    return;
+  }
+
+  try {
+    const content = await fs.readFile(resolved, "utf-8");
+    res.json({ path: filePath, content });
+  } catch {
+    res.status(404).json({ error: "File not found" });
+  }
+});
+
+// POST /api/skill-drafts/:name/approve — publish draft: GitHub push + move to skills
+router.post("/api/skill-drafts/:name/approve", async (req, res) => {
+  const { name } = req.params;
+
+  if (!isValidName(name)) {
+    res.status(400).json({ error: "Invalid skill name" });
+    return;
+  }
+
+  const draftDir = path.join(DRAFTS_DIR, name);
+  const skillDir = path.join(SKILLS_DIR, name);
+
+  try {
+    await fs.access(draftDir);
+  } catch {
+    res.status(404).json({ error: "Draft not found" });
+    return;
+  }
+
+  try {
+    // Collect all files from draft
+    const files = await collectFiles(draftDir, draftDir);
+
+    // Push each file to GitHub
+    for (const filePath of files) {
+      const content = await fs.readFile(path.join(draftDir, filePath), "utf-8");
+      await createOrUpdateFile(`.claude/skills/${name}/${filePath}`, content, `Create skill ${name}: ${filePath}`);
+    }
+
+    // Copy draft to skills directory
+    await fs.mkdir(skillDir, { recursive: true });
+    for (const filePath of files) {
+      const src = path.join(draftDir, filePath);
+      const dest = path.join(skillDir, filePath);
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.copyFile(src, dest);
+    }
+
+    // Remove draft
+    await fs.rm(draftDir, { recursive: true });
+
+    res.json({ ok: true, name, files });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to approve draft";
+    res.status(500).json({ error: message });
+  }
+});
+
+// DELETE /api/skill-drafts/:name — discard draft
+router.delete("/api/skill-drafts/:name", async (req, res) => {
+  const { name } = req.params;
+
+  if (!isValidName(name)) {
+    res.status(400).json({ error: "Invalid skill name" });
+    return;
+  }
+
+  const draftDir = path.join(DRAFTS_DIR, name);
+
+  try {
+    await fs.access(draftDir);
+    await fs.rm(draftDir, { recursive: true });
+    res.json({ ok: true });
+  } catch {
+    res.status(404).json({ error: "Draft not found" });
   }
 });
 
