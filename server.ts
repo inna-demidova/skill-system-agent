@@ -75,19 +75,22 @@ app.post("/api/chat", async (req, res) => {
 
   const sessionId = clientSessionId || randomUUID();
 
-  // Send sessionId as the first event so client can store it
-  res.write(`event: session\ndata: ${JSON.stringify({ sessionId })}\n\n`);
+  // For resumed sessions, confirm sessionId immediately
+  if (clientSessionId) {
+    res.write(`event: session\ndata: ${JSON.stringify({ sessionId })}\n\n`);
+  }
 
-  try {
+  const runQuery = async (withResume: boolean) => {
     const queryOptions = {
       ...agentOptions,
-      sessionId,
-      ...(clientSessionId ? { resume: clientSessionId } : {}),
+      ...(withResume && clientSessionId
+        ? { sessionId, resume: clientSessionId }
+        : {}),
       stderr: (data: string) => console.error("[claude-cli stderr]", data),
       debug: true,
     };
 
-    console.log("[chat] Starting query:", { message: message.trim().slice(0, 50), sessionId });
+    console.log("[chat] Starting query:", { message: message.trim().slice(0, 50), sessionId, withResume });
 
     let messageCount = 0;
     for await (const msg of query({ prompt: message.trim(), options: queryOptions })) {
@@ -118,10 +121,26 @@ app.post("/api/chat", async (req, res) => {
     }
 
     console.log("[chat] Query finished. Total messages:", messageCount);
+  };
+
+  try {
+    await runQuery(true);
   } catch (err) {
-    console.error("[chat] Exception:", err);
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
+    // If resume failed (session transcript lost — e.g. server restart), retry as fresh session
+    if (clientSessionId && errorMessage.includes("exited with code 1")) {
+      console.warn("[chat] Resume failed, retrying as fresh session:", errorMessage);
+      try {
+        await runQuery(false);
+      } catch (retryErr) {
+        console.error("[chat] Retry exception:", retryErr);
+        const retryMessage = retryErr instanceof Error ? retryErr.message : "Unknown error";
+        res.write(`event: error\ndata: ${JSON.stringify({ error: retryMessage })}\n\n`);
+      }
+    } else {
+      console.error("[chat] Exception:", err);
+      res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
+    }
   }
 
   res.write("event: done\ndata: {}\n\n");
