@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { randomUUID } from "crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { parseCV } from "./.claude/skills/parse-cv/scripts/parse-cv";
 import { skillsRouter } from "./src/skills-api";
@@ -73,21 +72,20 @@ app.post("/api/chat", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
-  const sessionId = clientSessionId || randomUUID();
-
-  // Send sessionId as the first event so client can store it
-  res.write(`event: session\ndata: ${JSON.stringify({ sessionId })}\n\n`);
+  // For resumed sessions, send sessionId immediately; for new ones, wait for SDK to provide it
+  if (clientSessionId) {
+    res.write(`event: session\ndata: ${JSON.stringify({ sessionId: clientSessionId })}\n\n`);
+  }
 
   try {
     const queryOptions = {
       ...agentOptions,
-      sessionId,
-      ...(clientSessionId ? { resume: clientSessionId } : {}),
+      ...(clientSessionId ? { sessionId: clientSessionId, resume: clientSessionId } : {}),
       stderr: (data: string) => console.error("[claude-cli stderr]", data),
       debug: true,
     };
 
-    console.log("[chat] Starting query:", { message: message.trim().slice(0, 50), sessionId });
+    console.log("[chat] Starting query:", { message: message.trim().slice(0, 50), sessionId: clientSessionId || "new" });
 
     let messageCount = 0;
     for await (const msg of query({ prompt: message.trim(), options: queryOptions })) {
