@@ -84,7 +84,7 @@ app.post("/api/chat", async (req, res) => {
     const queryOptions = {
       ...agentOptions,
       ...(withResume && clientSessionId
-        ? { sessionId, resume: clientSessionId }
+        ? { resume: clientSessionId }
         : {}),
       stderr: (data: string) => console.error("[claude-cli stderr]", data),
       debug: true,
