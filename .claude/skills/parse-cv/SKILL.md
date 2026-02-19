@@ -39,5 +39,5 @@ The React app calls `POST /api/action` with:
   "payload": { "cvText": "..." }
 }
 ```
-
+test github integration
 The server calls `parseCV(cvText)` directly and returns the JSON result.
